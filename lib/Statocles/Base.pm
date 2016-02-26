@@ -34,7 +34,7 @@ our %IMPORT_BUNDLES = (
         'Dir::Self' => [qw( __DIR__ )],
         'Path::Tiny' => [qw( path tempdir cwd )],
         'Statocles::Test' => [qw(
-            test_pages build_test_site build_test_site_apps
+            build_test_site build_test_site_apps
             build_temp_site
         )],
         'Statocles::Types' => [qw( DateTimeObj )],

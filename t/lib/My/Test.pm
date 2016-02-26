@@ -24,11 +24,11 @@ our @IMPORT_MODULES = (
     'Dir::Self' => [qw( __DIR__ )],
     'Path::Tiny' => [qw( path tempdir cwd )],
     'Statocles::Test' => [qw(
-      test_pages build_test_site build_test_site_apps
+      build_test_site build_test_site_apps
       build_temp_site
     )],
     'Statocles::Types' => [qw( DateTimeObj )],
-    'My::Test::_Extras' => [qw( test_constructor )],
+    'My::Test::_Extras' => [qw( test_constructor test_pages )],
     sub { $Statocles::VERSION ||= 0.001; return }, # Set version normally done via dzil
 );
 
@@ -43,7 +43,7 @@ use Test::Exception;
 use Test::Deep;
 use Test::More;
 
-our @EXPORT_OK = qw( test_constructor );
+our @EXPORT_OK = qw( test_constructor test_pages );
 
 sub test_constructor {
     my ( $class, %args ) = @_;
@@ -87,5 +87,63 @@ sub test_constructor {
     };
 }
 
+sub test_pages {
+    my ( $site, $app ) = ( shift, shift );
+    require Mojo::DOM;
+    require Scalar::Util;
+
+    my %opt;
+    if ( ref $_[0] eq 'HASH' ) {
+        %opt = %{ +shift };
+    }
+
+    my %page_tests = @_;
+
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    my @warnings;
+    local $SIG{__WARN__} = sub { push @warnings, $_[0] };
+
+    my @pages = $app->pages;
+
+    is scalar @pages, scalar keys %page_tests, 'correct number of pages';
+
+    for my $page ( @pages ) {
+        ok $page->DOES( 'Statocles::Page' ), 'must be a Statocles::Page';
+
+        isa_ok $page->date, 'DateTime::Moonpig', 'must set a date';
+
+        if ( !$page_tests{ $page->path } ) {
+            fail "No tests found for page: " . $page->path;
+            next;
+        }
+
+        my $output = $page->render( site => $site );
+
+        # Handle filehandles from render
+        if ( ref $output eq 'GLOB' ) {
+            $output = do { local $/; <$output> };
+        }
+        # Handle Path::Tiny from render
+        elsif ( Scalar::Util::blessed( $output ) && $output->isa( 'Path::Tiny' ) ) {
+            $output = $output->slurp_raw;
+        }
+
+        if ( $page->path =~ /[.](?:html|rss|atom)$/ ) {
+            my $dom = Mojo::DOM->new( $output );
+            fail "Could not parse dom" unless $dom;
+            subtest 'html content: ' . $page->path, $page_tests{ $page->path }, $output, $dom;
+        }
+        elsif ( $page_tests{ $page->path } ) {
+            subtest 'text content: ' . $page->path, $page_tests{ $page->path }, $output;
+        }
+        else {
+            fail "Unknown page: " . $page->path;
+        }
+
+    }
+
+    ok !@warnings, "no warnings!" or diag join "\n", @warnings;
+}
 
 1;

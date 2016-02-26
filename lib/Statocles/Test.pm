@@ -3,12 +3,11 @@ package Statocles::Test;
 # ABSTRACT: Common test routines for Statocles
 
 use Statocles::Base;
-use Test::More;
 use Statocles::Util qw( dircopy );
 
 use base qw( Exporter );
 our @EXPORT_OK = qw(
-    test_pages build_test_site build_test_site_apps
+    build_test_site build_test_site_apps
     build_temp_site
 );
 
@@ -105,86 +104,6 @@ sub build_test_site_apps {
         $build_dir,
         $deploy_dir,
     );
-}
-
-=sub test_pages
-
-    test_pages( $site, $app, %tests )
-
-Test the pages of the given app. C<tests> is a set of pairs of C<path> => C<callback>
-to test the pages returned by the app.
-
-The C<callback> will be given two arguments:
-
-=over
-
-=item C<output>
-
-The output of the rendered page.
-
-=item C<dom>
-
-If the page is HTML, a L<Mojo::DOM> object ready for testing.
-
-=back
-
-=cut
-
-sub test_pages {
-    my ( $site, $app ) = ( shift, shift );
-
-    my %opt;
-    if ( ref $_[0] eq 'HASH' ) {
-        %opt = %{ +shift };
-    }
-
-    my %page_tests = @_;
-
-    local $Test::Builder::Level = $Test::Builder::Level + 1;
-
-    my @warnings;
-    local $SIG{__WARN__} = sub { push @warnings, $_[0] };
-
-    my @pages = $app->pages;
-
-    is scalar @pages, scalar keys %page_tests, 'correct number of pages';
-
-    for my $page ( @pages ) {
-        ok $page->DOES( 'Statocles::Page' ), 'must be a Statocles::Page';
-
-        isa_ok $page->date, 'DateTime::Moonpig', 'must set a date';
-
-        if ( !$page_tests{ $page->path } ) {
-            fail "No tests found for page: " . $page->path;
-            next;
-        }
-
-        my $output = $page->render( site => $site );
-
-        # Handle filehandles from render
-        if ( ref $output eq 'GLOB' ) {
-            $output = do { local $/; <$output> };
-        }
-        # Handle Path::Tiny from render
-        elsif ( Scalar::Util::blessed( $output ) && $output->isa( 'Path::Tiny' ) ) {
-            $output = $output->slurp_raw;
-        }
-
-        if ( $page->path =~ /[.](?:html|rss|atom)$/ ) {
-            my $dom = Mojo::DOM->new( $output );
-            fail "Could not parse dom" unless $dom;
-            subtest 'html content: ' . $page->path, $page_tests{ $page->path }, $output, $dom;
-        }
-        elsif ( $page_tests{ $page->path } ) {
-            subtest 'text content: ' . $page->path, $page_tests{ $page->path }, $output;
-        }
-        else {
-            fail "Unknown page: " . $page->path;
-        }
-
-    }
-
-    ok !@warnings, "no warnings!" or diag join "\n", @warnings;
 }
 
 =sub build_temp_site
