@@ -4,6 +4,7 @@ package My::Test;
 
 use strict;
 use warnings;
+
 use base 'Import::Base';
 
 our @IMPORT_MODULES = (
@@ -23,13 +24,68 @@ our @IMPORT_MODULES = (
     'Dir::Self' => [qw( __DIR__ )],
     'Path::Tiny' => [qw( path tempdir cwd )],
     'Statocles::Test' => [qw(
-      test_constructor test_pages build_test_site build_test_site_apps
+      test_pages build_test_site build_test_site_apps
       build_temp_site
     )],
     'Statocles::Types' => [qw( DateTimeObj )],
+    'My::Test::_Extras' => [qw( test_constructor )],
     sub { $Statocles::VERSION ||= 0.001; return }, # Set version normally done via dzil
 );
 
+package My::Test::_Extras;
+
+$INC{'My/Test/_Extras.pm'} = 1;
+
+require Exporter;
+*import = \&Exporter::import;
+
+use Test::Exception;
+use Test::Deep;
+use Test::More;
+
+our @EXPORT_OK = qw( test_constructor );
+
+sub test_constructor {
+    my ( $class, %args ) = @_;
+
+    my %required = $args{required} ? ( %{ $args{required} } ) : ();
+    my %defaults = $args{default} ? ( %{ $args{default} } ) : ();
+
+    local $Test::Builder::Level = $Test::Builder::Level + 1;
+
+    subtest $class . ' constructor' => sub {
+        isa_ok $class->new( %required ), $class,
+            'constructor works with all required args';
+
+        if ( $args{required} ) {
+            subtest 'required attributes' => sub {
+                for my $key ( keys %required ) {
+                    dies_ok {
+                        $class->new(
+                            map {; $_ => $required{ $_ } } grep { $_ ne $key } keys %required,
+                        );
+                    } $key . ' is required';
+                }
+            };
+        }
+
+        if ( $args{default} ) {
+            subtest 'attribute defaults' => sub {
+                my $obj = $class->new( %required );
+                for my $key ( keys %defaults ) {
+                    if ( ref $defaults{ $key } eq 'CODE' ) {
+                        local $_ = $obj->$key;
+                        subtest "$key default value" => $defaults{ $key };
+                    }
+                    else {
+                        cmp_deeply $obj->$key, $defaults{ $key }, "$key default value";
+                    }
+                }
+            };
+        }
+
+    };
+}
+
 
 1;
-
